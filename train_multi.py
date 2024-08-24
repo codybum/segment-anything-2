@@ -100,14 +100,12 @@ def train(rank, world_size):
             for ind, pack in enumerate(train_loader):
 
                 # input image and gt masks
-                '''
                 image = pack['image'].numpy()
                 mask = pack['mask'].numpy()
                 input_point = pack['input_point'].numpy()
                 input_label = pack['input_label'].numpy()
-                '''
 
-                image, mask, input_point, input_label = read_batch(data)  # load data batch
+                #image, mask, input_point, input_label = read_batch(data)  # load data batch
 
                 if mask.shape[0] == 0: continue  # ignore empty batches
                 predictor.set_image(image)  # apply SAM image encoder to the image
