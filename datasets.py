@@ -44,20 +44,17 @@ class LabPicsV1(Dataset):
         r = np.min([self.size / Img.shape[1], self.size / Img.shape[0]])  # scalling factor
         Img = cv2.resize(Img, (int(Img.shape[1] * r), int(Img.shape[0] * r)))
         ann_map = cv2.resize(ann_map, (int(ann_map.shape[1] * r), int(ann_map.shape[0] * r)), interpolation=cv2.INTER_NEAREST)
+
         #pad image
-        Img = self.pad_image(Img)
-        ann_map = self.pad_image(ann_map)
+        #Img = self.pad_image(Img)
+        #ann_map = self.pad_image(ann_map)
 
         # merge vessels and materials annotations
         mat_map = ann_map[:, :, 0]  # material annotation map
-        print('mat_map', mat_map)
         ves_map = ann_map[:, :, 2]  # vessel  annotaion map
-        print('ves_map', ves_map)
         mat_map[mat_map == 0] = ves_map[mat_map == 0] * (mat_map.max() + 1)  # merge maps
-        print('merge_map', mat_map)
-        exit(0)
-        # Get binary masks and points
 
+        # Get binary masks and points
         inds = np.unique(mat_map)[1:]  # load all indices
         points = []
         masks = []
