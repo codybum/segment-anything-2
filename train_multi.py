@@ -77,6 +77,8 @@ def train(rank, args):
 
                 for ind, pack in enumerate(train_loader):
 
+                    print('pack:', type(pack), pack)
+                    exit(0)
                     # input image and gt masks
                     image = pack['image'].numpy()
                     mask = pack['mask'].numpy()
