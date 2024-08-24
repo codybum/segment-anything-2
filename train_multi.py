@@ -12,7 +12,7 @@ import os
 
 from datasets import LabPicsV1
 from sam2.build_sam import build_sam2
-from sam2.sam2_image_predictor_multi import SAM2ImagePredictor
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 #for dist
 import torch.distributed as dist
