@@ -16,7 +16,7 @@ class LabPicsV1(Dataset):
 
         #  select image
 
-        ent = self.data[np.random.randint(len(self.data))]  # choose random entry
+        ent = self.data[index]  # choose random entry
         Img = cv2.imread(ent["image"])[..., ::-1]  # read image
         ann_map = cv2.imread(ent["annotation"])  # read annotation
 
