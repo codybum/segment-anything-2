@@ -33,10 +33,10 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank, world_size):
+def train(rank, args):
 
     print(f"Running DDP Training on rank {rank}.")
-    setup(rank, world_size)
+    setup(rank, args.world_size)
 
     # Load model
     sam2_checkpoint = "../models/sam2-hiera-small/sam2_hiera_small.pt"  # path to model weight (pre model loaded from: https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_small.pt)
@@ -203,4 +203,4 @@ if __name__ == '__main__':
         else:
             args.world_size = torch.cuda.device_count()
 
-    mp.spawn(train, args=(args.world_size,), nprocs=args.world_size, join=True)
+    mp.spawn(train, args=(args,), nprocs=args.world_size, join=True)
