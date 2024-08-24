@@ -99,14 +99,12 @@ def train(rank, args):
                     prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[-1])  # Upscale the masks to the original image resolution
 
                     # Segmentaion Loss caclulation
-                    gt_mask = torch.tensor(mask.astype(np.float32)).cuda()
-                    #gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
+                    gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
                     prd_mask = torch.sigmoid(prd_masks[:, 0])  # Turn logit map to probability map
                     seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask) * torch.log(
                         (1 - prd_mask) + 0.00001)).mean()  # cross entropy loss
 
                     # Score loss calculation (intersection over union) IOU
-
                     inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
                     iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
                     score_loss = torch.abs(prd_scores[:, 0] - iou).mean()
