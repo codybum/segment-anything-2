@@ -19,6 +19,7 @@ from torch.utils.data import Dataset
 class LabPicsV1(Dataset):
     def __init__(self, args):
 
+        self.size = 1024
         #Read data
         self.data = []  # list of files in dataset
         for ff, name in enumerate(os.listdir(args.input_data_path + "Simple/Train/Image/")):  # go over all folder annotation
@@ -35,14 +36,15 @@ class LabPicsV1(Dataset):
     def __getitem__(self, index):  # read random image and its annotaion from  the dataset (LabPics)
 
         #  select image
-
         ent = self.data[index]  # choose random entry
         Img = cv2.imread(ent["image"])[..., ::-1]  # read image
         ann_map = cv2.imread(ent["annotation"])  # read annotation
 
         # resize image
-        r = np.min([1024 / Img.shape[1], 1024 / Img.shape[0]])  # scalling factor
+        r = np.min([self.size / Img.shape[1], self.size / Img.shape[0]])  # scalling factor
         Img = cv2.resize(Img, (int(Img.shape[1] * r), int(Img.shape[0] * r)))
+        Img = self.pad_image(self, Img)
+
         ann_map = cv2.resize(ann_map, (int(ann_map.shape[1] * r), int(ann_map.shape[0] * r)), interpolation=cv2.INTER_NEAREST)
 
         # merge vessels and materials annotations
@@ -71,6 +73,33 @@ class LabPicsV1(Dataset):
             'input_point': np.array(points),
             'input_label': np.ones([len(masks), 1])
         }
+
+    def pad_image(self, img):
+
+        h, w = img.shape[:2]
+        pad_bottom, pad_right = 0, 0
+        ratio = w / h
+
+        if h > self.size or w > self.size:
+            # shrinking image algorithm
+            interp = cv2.INTER_AREA
+        else:
+            # stretching image algorithm
+            interp = cv2.INTER_CUBIC
+
+        w = self.size
+        h = round(w / ratio)
+        if h > self.size:
+            h = self.size
+            w = round(h * ratio)
+        pad_bottom = abs(self.size - h)
+        pad_right = abs(self.size - w)
+
+        scaled_img = cv2.resize(img, (w, h), interpolation=interp)
+        padded_img = cv2.copyMakeBorder(
+            scaled_img, 0, pad_bottom, 0, pad_right, borderType=cv2.BORDER_CONSTANT, value=[0, 0, 0])
+
+        return padded_img
 
 
 class REFUGE(Dataset):
