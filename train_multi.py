@@ -52,12 +52,12 @@ def train(rank, args):
 
     predictor.model.module.sam_mask_decoder.train(True)  # enable training of mask decoder
     predictor.model.module.sam_prompt_encoder.train(True)  # enable training of prompt encoder
-    optimizer = torch.optim.AdamW(params=predictor.model.module.parameters(), lr=1e-5, weight_decay=4e-5)
+    optimizer = torch.optim.AdamW(params=predictor.model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = torch.cuda.amp.GradScaler()  # mixed precision
 
     #training data
     labpicsv1_train_dataset = LabPicsV1(args)
-    train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True)
+    train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True, seed=args.random_state)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
                               pin_memory=True, sampler=train_sampler)
 
@@ -140,7 +140,6 @@ def train(rank, args):
                         if itr % 1000 == 0:
                             torch.save(predictor.model.module.state_dict(), args.output_model_path)
 
-
                     itr += 1
 
                     pbar.update()
@@ -185,12 +184,21 @@ def read_batch(data): # read random image and its annotaion from  the dataset (L
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Multi-GPU Training: SAM2')
-    parser.add_argument('--num_epochs', type=int, default=2, help='name of project')
-    parser.add_argument('--world_size', type=int, help='name of project')
+
+    #general
+    parser.add_argument('--random_state', type=int, default=42,
+                        help='Pass an int for reproducible output across multiple function calls')
+
+    #data management
     parser.add_argument('--input_data_path', type=str, default='../data/LabPicsV1/', help='name of project')
     parser.add_argument('--output_model_path', type=str, default='sam2_checkpoint', help='name of project')
     parser.add_argument('--test_size', type=float, default=0.2, help='size of the testing split')
-    parser.add_argument('--random_state', type=int, default=42, help='Pass an int for reproducible output across multiple function calls')
+
+    #training params
+    parser.add_argument('--num_epochs', type=int, default=2, help='name of project')
+    parser.add_argument('--world_size', type=int, help='name of project')
+    parser.add_argument('--lr', type=float, default=1e-5, help='name of project')
+    parser.add_argument('--weight_decay', type=float, default=4e-5, help='name of project')
 
     # get args
     args = parser.parse_args()
