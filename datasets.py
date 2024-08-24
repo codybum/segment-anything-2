@@ -67,6 +67,9 @@ class LabPicsV1(Dataset):
 
         #return Img, np.array(masks), np.array(points), np.ones([len(masks), 1])
 
+        print('masks:', masks)
+        exit(0)
+
         return {
             'image': Img,
             'mask': np.array(masks),
