@@ -1,14 +1,21 @@
 """ train and test dataset
 
 """
+import os
 
 import numpy as np
 from torch.utils.data import Dataset
 import cv2
 
 class LabPicsV1(Dataset):
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, args):
+
+        #Read data
+        self.data = []  # list of files in dataset
+        for ff, name in enumerate(os.listdir(args.input_data_path + "Simple/Train/Image/")):  # go over all folder annotation
+            self.data.append({"image": args.input_data_path + "Simple/Train/Image/" + name,
+                         "annotation": args.input_data_path + "Simple/Train/Instance/" + name[:-4] + ".png"})
+
     def __len__(self):
         return len(self.data)
 

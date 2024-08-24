@@ -1,4 +1,5 @@
 # Train/Fine-Tune SAM 2 on the LabPics 1 dataset
+import argparse
 
 # Toturial: https://medium.com/@sagieppel/train-fine-tune-segment-anything-2-sam-2-in-60-lines-of-code-928dd29a63b3
 # Main repo: https://github.com/facebookresearch/segment-anything-2
@@ -20,13 +21,6 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
-
-
-# Read data
-data_dir=r"../data/LabPicsV1//" # Path to dataset (LabPics 1)
-data=[] # list of files in dataset
-for ff, name in enumerate(os.listdir(data_dir+"Simple/Train/Image/")):  # go over all folder annotation
-    data.append({"image":data_dir+"Simple/Train/Image/"+name,"annotation":data_dir+"Simple/Train/Instance/"+name[:-4]+".png"})
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -61,24 +55,8 @@ def train(rank, world_size):
     optimizer = torch.optim.AdamW(params=predictor.model.module.parameters(), lr=1e-5, weight_decay=4e-5)
     scaler = torch.cuda.amp.GradScaler()  # mixed precision
 
-    labpicsv1_train_dataset = LabPicsV1(data)
+    labpicsv1_train_dataset = LabPicsV1(args)
     #train_loader = DataLoader(labpicsv1_train_dataset, collate_fn=collate_fn, batch_size=None, shuffle=True, num_workers=1, pin_memory=True)
-
-    class PadSequence:
-        def __call__(self, batch):
-            # Let's assume that each element in "batch" is a tuple (data, label).
-            # Sort the batch in the descending order
-            sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
-            # Get each sequence and pad it
-            sequences = [x[0] for x in sorted_batch]
-            sequences_padded = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True)
-            # Also need to store the length of each sequence
-            # This is later needed in order to unpad the sequences
-            lengths = torch.LongTensor([len(x) for x in sequences])
-
-            # Don't forget to grab the labels of the *sorted* batch
-            labels = torch.LongTensor(map(lambda x: x[1], sorted_batch))
-            return sequences_padded, lengths, labels
 
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
@@ -90,7 +68,6 @@ def train(rank, world_size):
     with torch.cuda.amp.autocast():  # cast to mix precision
 
         itr = 0
-
         master_process = rank == 0
 
         with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img', disable=not master_process) as pbar:
@@ -162,7 +139,7 @@ def train(rank, world_size):
                         pbar.set_postfix(loss=loss.item(), iou=mean_iou)
 
                     if itr % 1000 == 0:
-                        torch.save(predictor.model.module.state_dict(), "model.torch")
+                        torch.save(predictor.model.module.state_dict(), args.output_model_path)
 
 
                 itr += 1
@@ -210,6 +187,20 @@ def read_batch(data): # read random image and its annotaion from  the dataset (L
 
 if __name__ == '__main__':
 
-    world_size = 4
+    parser = argparse.ArgumentParser(description='Multi-GPU Training: SAM2')
+    parser.add_argument('--world_size', type=int, help='name of project')
+    parser.add_argument('--input_data_path', type=str, default='../data/LabPicsV1/', help='name of project')
+    parser.add_argument('--output_model_path', type=str, default='sam2_checkpoint', help='name of project')
+    parser.add_argument('--test_size', type=float, default=0.2, help='size of the testing split')
+    parser.add_argument('--random_state', type=int, default=42, help='Pass an int for reproducible output across multiple function calls')
 
-    mp.spawn(train, args=(world_size,), nprocs=world_size, join=True)
+    # get args
+    args = parser.parse_args()
+
+    if args.world_size is None:
+        if os.environ['WORLD_SIZE'] is None:
+            args.world_size = torch.cuda.device_count()
+        else:
+            args.world_size = int(os.environ['WORLD_SIZE'])
+
+    mp.spawn(train, args=(args.world_size,), nprocs=args.world_size, join=True)
