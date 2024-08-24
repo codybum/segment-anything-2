@@ -198,7 +198,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.world_size is None:
-        if os.environ['WORLD_SIZE'] is None:
+        if 'WORLD_SIZE' not in os.environ['WORLD_SIZE']:
             args.world_size = torch.cuda.device_count()
         else:
             args.world_size = int(os.environ['WORLD_SIZE'])
