@@ -60,7 +60,7 @@ def train(rank, args):
     #training data
     labpicsv1_train_dataset = LabPicsV1(args)
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True, seed=args.random_state)
-    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
+    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=2, num_workers=0,
                               pin_memory=True, sampler=train_sampler, collate_fn=collate_fn)
 
     # Training loop
