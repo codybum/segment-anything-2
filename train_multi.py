@@ -32,6 +32,8 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
+def collate_fn(batch):
+    return tuple(zip(*batch))
 
 def train(rank, args):
 
@@ -59,7 +61,7 @@ def train(rank, args):
     labpicsv1_train_dataset = LabPicsV1(args)
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True, seed=args.random_state)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
-                              pin_memory=True, sampler=train_sampler)
+                              pin_memory=True, sampler=train_sampler, collate_fn=collate_fn)
 
     # Training loop
     with torch.cuda.amp.autocast():  # cast to mix precision
