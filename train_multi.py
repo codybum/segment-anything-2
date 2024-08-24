@@ -75,78 +75,78 @@ def train(rank, args):
 
                 #image, mask, input_point, input_label = read_batch(data)  # load data batch
 
-                for ind, pack in enumerate(train_loader):
+                for ind, packs in enumerate(train_loader):
 
-                    print('pack:', type(pack), pack)
-                    exit(0)
-                    # input image and gt masks
-                    image = pack['image'].numpy()
-                    mask = pack['mask'].numpy()
-                    input_point = pack['input_point'].numpy()
-                    input_label = pack['input_label'].numpy()
+                    for pack in packs:
 
-                    #image, mask, input_point, input_label = read_batch(data)  # load data batch
+                        # input image and gt masks
+                        image = pack['image'].numpy()
+                        mask = pack['mask'].numpy()
+                        input_point = pack['input_point'].numpy()
+                        input_label = pack['input_label'].numpy()
 
-                    if mask.shape[0] == 0: continue  # ignore empty batches
-                    predictor.set_image(image)  # apply SAM image encoder to the image
+                        #image, mask, input_point, input_label = read_batch(data)  # load data batch
 
-                    # prompt encoding
+                        if mask.shape[0] == 0: continue  # ignore empty batches
+                        predictor.set_image(image)  # apply SAM image encoder to the image
 
-                    mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(input_point, input_label, box=None,
-                                                                                            mask_logits=None,
-                                                                                            normalize_coords=True)
-                    sparse_embeddings, dense_embeddings = predictor.model.module.sam_prompt_encoder(points=(unnorm_coords, labels),
-                                                                                                    boxes=None, masks=None, )
+                        # prompt encoding
 
-                    # mask decoder
+                        mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(input_point, input_label, box=None,
+                                                                                                mask_logits=None,
+                                                                                                normalize_coords=True)
+                        sparse_embeddings, dense_embeddings = predictor.model.module.sam_prompt_encoder(points=(unnorm_coords, labels),
+                                                                                                        boxes=None, masks=None, )
 
-                    batched_mode = unnorm_coords.shape[0] > 1  # multi object prediction
-                    high_res_features = [feat_level[-1].unsqueeze(0) for feat_level in predictor._features["high_res_feats"]]
-                    low_res_masks, prd_scores, _, _ = predictor.model.module.sam_mask_decoder(
-                        image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),
-                        image_pe=predictor.model.module.sam_prompt_encoder.get_dense_pe(), sparse_prompt_embeddings=sparse_embeddings,
-                        dense_prompt_embeddings=dense_embeddings, multimask_output=True, repeat_image=batched_mode,
-                        high_res_features=high_res_features, )
-                    prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[
-                        -1])  # Upscale the masks to the original image resolution
+                        # mask decoder
 
-                    # Segmentaion Loss caclulation
+                        batched_mode = unnorm_coords.shape[0] > 1  # multi object prediction
+                        high_res_features = [feat_level[-1].unsqueeze(0) for feat_level in predictor._features["high_res_feats"]]
+                        low_res_masks, prd_scores, _, _ = predictor.model.module.sam_mask_decoder(
+                            image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),
+                            image_pe=predictor.model.module.sam_prompt_encoder.get_dense_pe(), sparse_prompt_embeddings=sparse_embeddings,
+                            dense_prompt_embeddings=dense_embeddings, multimask_output=True, repeat_image=batched_mode,
+                            high_res_features=high_res_features, )
+                        prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[
+                            -1])  # Upscale the masks to the original image resolution
 
-                    #gt_mask = torch.tensor(mask.astype(np.float32)).cuda()
-                    gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
-                    prd_mask = torch.sigmoid(prd_masks[:, 0])  # Turn logit map to probability map
-                    seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask) * torch.log(
-                        (1 - prd_mask) + 0.00001)).mean()  # cross entropy loss
+                        # Segmentaion Loss caclulation
 
-                    # Score loss calculation (intersection over union) IOU
+                        #gt_mask = torch.tensor(mask.astype(np.float32)).cuda()
+                        gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
+                        prd_mask = torch.sigmoid(prd_masks[:, 0])  # Turn logit map to probability map
+                        seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask) * torch.log(
+                            (1 - prd_mask) + 0.00001)).mean()  # cross entropy loss
 
-                    inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
-                    iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
-                    score_loss = torch.abs(prd_scores[:, 0] - iou).mean()
-                    loss = seg_loss + score_loss * 0.05  # mix losses
+                        # Score loss calculation (intersection over union) IOU
 
-                    # apply back propogation
+                        inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
+                        iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
+                        score_loss = torch.abs(prd_scores[:, 0] - iou).mean()
+                        loss = seg_loss + score_loss * 0.05  # mix losses
 
-                    predictor.model.module.zero_grad()  # empty gradient
-                    scaler.scale(loss).backward()  # Backpropogate
-                    scaler.step(optimizer)
-                    scaler.update()  # Mix precision
+                        # apply back propogation
 
-                    if rank == 0:
+                        predictor.model.module.zero_grad()  # empty gradient
+                        scaler.scale(loss).backward()  # Backpropogate
+                        scaler.step(optimizer)
+                        scaler.update()  # Mix precision
 
-                        if itr % 10 == 0:
-                            # Display results
-                            if itr == 0: mean_iou = 0
-                            mean_iou = mean_iou * 0.99 + 0.01 * np.mean(iou.cpu().detach().numpy())
-                            #print("step)", itr, "Accuracy(IOU)=", mean_iou)
-                            pbar.set_postfix(loss=loss.item(), iou=mean_iou)
+                        if rank == 0:
 
-                        if itr % 1000 == 0:
-                            torch.save(predictor.model.module.state_dict(), args.output_model_path)
+                            if itr % 10 == 0:
+                                # Display results
+                                if itr == 0: mean_iou = 0
+                                mean_iou = mean_iou * 0.99 + 0.01 * np.mean(iou.cpu().detach().numpy())
+                                #print("step)", itr, "Accuracy(IOU)=", mean_iou)
+                                pbar.set_postfix(loss=loss.item(), iou=mean_iou)
 
-                    itr += 1
+                            if itr % 1000 == 0:
+                                torch.save(predictor.model.module.state_dict(), args.output_model_path)
 
-                    pbar.update()
+                        itr += 1
+
+                        pbar.update()
 
     cleanup()
 
