@@ -55,98 +55,95 @@ def train(rank, args):
     optimizer = torch.optim.AdamW(params=predictor.model.module.parameters(), lr=1e-5, weight_decay=4e-5)
     scaler = torch.cuda.amp.GradScaler()  # mixed precision
 
+    #training data
     labpicsv1_train_dataset = LabPicsV1(args)
-    #train_loader = DataLoader(labpicsv1_train_dataset, collate_fn=collate_fn, batch_size=None, shuffle=True, num_workers=1, pin_memory=True)
-
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
                               pin_memory=True, sampler=train_sampler)
 
-    epoch = 1
-    mask_type = torch.float32
     # Training loop
     with torch.cuda.amp.autocast():  # cast to mix precision
 
         itr = 0
         master_process = rank == 0
 
-        with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img', disable=not master_process) as pbar:
+        for epoch in range(args.num_epochs):
 
-            #image, mask, input_point, input_label = read_batch(data)  # load data batch
-
-            for ind, pack in enumerate(train_loader):
-
-                # input image and gt masks
-                image = pack['image'].numpy()
-                mask = pack['mask'].numpy()
-                input_point = pack['input_point'].numpy()
-                input_label = pack['input_label'].numpy()
+            with tqdm(total=len(train_loader), desc=f'Epoch {epoch}', unit='img', disable=not master_process) as pbar:
 
                 #image, mask, input_point, input_label = read_batch(data)  # load data batch
 
-                if mask.shape[0] == 0: continue  # ignore empty batches
-                predictor.set_image(image)  # apply SAM image encoder to the image
+                for ind, pack in enumerate(train_loader):
 
-                # prompt encoding
+                    # input image and gt masks
+                    image = pack['image'].numpy()
+                    mask = pack['mask'].numpy()
+                    input_point = pack['input_point'].numpy()
+                    input_label = pack['input_label'].numpy()
 
-                mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(input_point, input_label, box=None,
-                                                                                        mask_logits=None,
-                                                                                        normalize_coords=True)
-                sparse_embeddings, dense_embeddings = predictor.model.module.sam_prompt_encoder(points=(unnorm_coords, labels),
-                                                                                                boxes=None, masks=None, )
+                    #image, mask, input_point, input_label = read_batch(data)  # load data batch
 
-                # mask decoder
+                    if mask.shape[0] == 0: continue  # ignore empty batches
+                    predictor.set_image(image)  # apply SAM image encoder to the image
 
-                batched_mode = unnorm_coords.shape[0] > 1  # multi object prediction
-                high_res_features = [feat_level[-1].unsqueeze(0) for feat_level in predictor._features["high_res_feats"]]
-                low_res_masks, prd_scores, _, _ = predictor.model.module.sam_mask_decoder(
-                    image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),
-                    image_pe=predictor.model.module.sam_prompt_encoder.get_dense_pe(), sparse_prompt_embeddings=sparse_embeddings,
-                    dense_prompt_embeddings=dense_embeddings, multimask_output=True, repeat_image=batched_mode,
-                    high_res_features=high_res_features, )
-                prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[
-                    -1])  # Upscale the masks to the original image resolution
+                    # prompt encoding
 
-                # Segmentaion Loss caclulation
+                    mask_input, unnorm_coords, labels, unnorm_box = predictor._prep_prompts(input_point, input_label, box=None,
+                                                                                            mask_logits=None,
+                                                                                            normalize_coords=True)
+                    sparse_embeddings, dense_embeddings = predictor.model.module.sam_prompt_encoder(points=(unnorm_coords, labels),
+                                                                                                    boxes=None, masks=None, )
 
-                #gt_mask = torch.tensor(mask.astype(np.float32)).cuda()
-                gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
-                prd_mask = torch.sigmoid(prd_masks[:, 0])  # Turn logit map to probability map
-                seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask) * torch.log(
-                    (1 - prd_mask) + 0.00001)).mean()  # cross entropy loss
+                    # mask decoder
 
-                # Score loss calculation (intersection over union) IOU
+                    batched_mode = unnorm_coords.shape[0] > 1  # multi object prediction
+                    high_res_features = [feat_level[-1].unsqueeze(0) for feat_level in predictor._features["high_res_feats"]]
+                    low_res_masks, prd_scores, _, _ = predictor.model.module.sam_mask_decoder(
+                        image_embeddings=predictor._features["image_embed"][-1].unsqueeze(0),
+                        image_pe=predictor.model.module.sam_prompt_encoder.get_dense_pe(), sparse_prompt_embeddings=sparse_embeddings,
+                        dense_prompt_embeddings=dense_embeddings, multimask_output=True, repeat_image=batched_mode,
+                        high_res_features=high_res_features, )
+                    prd_masks = predictor._transforms.postprocess_masks(low_res_masks, predictor._orig_hw[
+                        -1])  # Upscale the masks to the original image resolution
 
-                inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
-                iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
-                score_loss = torch.abs(prd_scores[:, 0] - iou).mean()
-                loss = seg_loss + score_loss * 0.05  # mix losses
+                    # Segmentaion Loss caclulation
 
-                # apply back propogation
+                    #gt_mask = torch.tensor(mask.astype(np.float32)).cuda()
+                    gt_mask = torch.tensor(mask.astype(np.float32)).to(rank)
+                    prd_mask = torch.sigmoid(prd_masks[:, 0])  # Turn logit map to probability map
+                    seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask) * torch.log(
+                        (1 - prd_mask) + 0.00001)).mean()  # cross entropy loss
 
-                predictor.model.module.zero_grad()  # empty gradient
-                scaler.scale(loss).backward()  # Backpropogate
-                scaler.step(optimizer)
-                scaler.update()  # Mix precision
+                    # Score loss calculation (intersection over union) IOU
 
-                if rank == 0:
+                    inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
+                    iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
+                    score_loss = torch.abs(prd_scores[:, 0] - iou).mean()
+                    loss = seg_loss + score_loss * 0.05  # mix losses
 
-                    if itr % 10 == 0:
-                        # Display results
-                        if itr == 0: mean_iou = 0
-                        mean_iou = mean_iou * 0.99 + 0.01 * np.mean(iou.cpu().detach().numpy())
-                        #print("step)", itr, "Accuracy(IOU)=", mean_iou)
-                        pbar.set_postfix(loss=loss.item(), iou=mean_iou)
+                    # apply back propogation
 
-                    if itr % 1000 == 0:
-                        torch.save(predictor.model.module.state_dict(), args.output_model_path)
+                    predictor.model.module.zero_grad()  # empty gradient
+                    scaler.scale(loss).backward()  # Backpropogate
+                    scaler.step(optimizer)
+                    scaler.update()  # Mix precision
+
+                    if rank == 0:
+
+                        if itr % 10 == 0:
+                            # Display results
+                            if itr == 0: mean_iou = 0
+                            mean_iou = mean_iou * 0.99 + 0.01 * np.mean(iou.cpu().detach().numpy())
+                            #print("step)", itr, "Accuracy(IOU)=", mean_iou)
+                            pbar.set_postfix(loss=loss.item(), iou=mean_iou)
+
+                        if itr % 1000 == 0:
+                            torch.save(predictor.model.module.state_dict(), args.output_model_path)
 
 
-                itr += 1
+                    itr += 1
 
-                pbar.update()
-
-
+                    pbar.update()
 
     cleanup()
 
@@ -188,6 +185,7 @@ def read_batch(data): # read random image and its annotaion from  the dataset (L
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Multi-GPU Training: SAM2')
+    parser.add_argument('--epochs', type=int, default=2, help='name of project')
     parser.add_argument('--world_size', type=int, help='name of project')
     parser.add_argument('--input_data_path', type=str, default='../data/LabPicsV1/', help='name of project')
     parser.add_argument('--output_model_path', type=str, default='sam2_checkpoint', help='name of project')
