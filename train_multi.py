@@ -77,7 +77,7 @@ def train(rank, args):
     labpicsv1_train_dataset = LabPicsV1(args)
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True, seed=args.random_state)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
-                              pin_memory=True, sampler=train_sampler, collate_fn=PadSequence())
+                              pin_memory=True, sampler=train_sampler)
 
     # Training loop
     with torch.cuda.amp.autocast():  # cast to mix precision

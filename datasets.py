@@ -43,7 +43,7 @@ class LabPicsV1(Dataset):
         # resize image
         r = np.min([self.size / Img.shape[1], self.size / Img.shape[0]])  # scalling factor
         Img = cv2.resize(Img, (int(Img.shape[1] * r), int(Img.shape[0] * r)))
-        Img = self.pad_image(self, Img)
+        Img = self.pad_image(Img)
 
         ann_map = cv2.resize(ann_map, (int(ann_map.shape[1] * r), int(ann_map.shape[0] * r)), interpolation=cv2.INTER_NEAREST)
 
