@@ -50,9 +50,12 @@ class LabPicsV1(Dataset):
 
         # merge vessels and materials annotations
         mat_map = ann_map[:, :, 0]  # material annotation map
+        print('mat_map', mat_map)
         ves_map = ann_map[:, :, 2]  # vessel  annotaion map
+        print('ves_map', ves_map)
         mat_map[mat_map == 0] = ves_map[mat_map == 0] * (mat_map.max() + 1)  # merge maps
-
+        print('merge_map', mat_map)
+        exit(0)
         # Get binary masks and points
 
         inds = np.unique(mat_map)[1:]  # load all indices
@@ -66,9 +69,6 @@ class LabPicsV1(Dataset):
             points.append([[yx[1], yx[0]]])
 
         #return Img, np.array(masks), np.array(points), np.ones([len(masks), 1])
-
-        print('masks:', masks)
-        exit(0)
 
         return {
             'image': Img,
