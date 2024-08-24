@@ -198,9 +198,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.world_size is None:
-        if 'WORLD_SIZE' not in os.environ['WORLD_SIZE']:
-            args.world_size = torch.cuda.device_count()
-        else:
+        if 'WORLD_SIZE' in os.environ:
             args.world_size = int(os.environ['WORLD_SIZE'])
+        else:
+            args.world_size = torch.cuda.device_count()
 
     mp.spawn(train, args=(args.world_size,), nprocs=args.world_size, join=True)
