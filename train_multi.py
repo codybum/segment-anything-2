@@ -185,7 +185,7 @@ def read_batch(data): # read random image and its annotaion from  the dataset (L
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Multi-GPU Training: SAM2')
-    parser.add_argument('--epochs', type=int, default=2, help='name of project')
+    parser.add_argument('--num_epochs', type=int, default=2, help='name of project')
     parser.add_argument('--world_size', type=int, help='name of project')
     parser.add_argument('--input_data_path', type=str, default='../data/LabPicsV1/', help='name of project')
     parser.add_argument('--output_model_path', type=str, default='sam2_checkpoint', help='name of project')
