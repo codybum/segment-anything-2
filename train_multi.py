@@ -81,7 +81,7 @@ def train(rank, world_size):
             return sequences_padded, lengths, labels
 
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True)
-    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, collate_fn=PadSequence(), num_workers=0,
+    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=4, collate_fn=PadSequence(), num_workers=0,
                               pin_memory=True, sampler=train_sampler)
 
     epoch = 1
