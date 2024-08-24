@@ -195,7 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_size', type=float, default=0.2, help='size of the testing split')
 
     #training params
-    parser.add_argument('--num_epochs', type=int, default=2, help='name of project')
+    parser.add_argument('--num_epochs', type=int, default=10, help='name of project')
     parser.add_argument('--world_size', type=int, help='name of project')
     parser.add_argument('--lr', type=float, default=1e-5, help='name of project')
     parser.add_argument('--weight_decay', type=float, default=4e-5, help='name of project')
