@@ -38,24 +38,6 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def collate_fn(data):
-    """
-       data: is a list of tuples with (example, label, length)
-             where 'example' is a tensor of arbitrary shape
-             and label/length are scalars
-    """
-    _, labels, lengths = zip(*data)
-    max_len = max(lengths)
-    n_ftrs = data[0][0].size(1)
-    features = torch.zeros((len(data), max_len, n_ftrs))
-    labels = torch.tensor(labels)
-    lengths = torch.tensor(lengths)
-
-    for i in range(len(data)):
-        j, k = data[i][0].size(0), data[i][0].size(1)
-        features[i] = torch.cat([data[i][0], torch.zeros((max_len - j, k))])
-
-    return features.float(), labels.long(), lengths.long()
 
 def train(rank, world_size):
 
@@ -82,8 +64,25 @@ def train(rank, world_size):
     labpicsv1_train_dataset = LabPicsV1(data)
     #train_loader = DataLoader(labpicsv1_train_dataset, collate_fn=collate_fn, batch_size=None, shuffle=True, num_workers=1, pin_memory=True)
 
+    class PadSequence:
+        def __call__(self, batch):
+            # Let's assume that each element in "batch" is a tuple (data, label).
+            # Sort the batch in the descending order
+            sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
+            # Get each sequence and pad it
+            sequences = [x[0] for x in sorted_batch]
+            sequences_padded = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True)
+            # Also need to store the length of each sequence
+            # This is later needed in order to unpad the sequences
+            lengths = torch.LongTensor([len(x) for x in sequences])
+
+            # Don't forget to grab the labels of the *sorted* batch
+            labels = torch.LongTensor(map(lambda x: x[1], sorted_batch))
+            return sequences_padded, lengths, labels
+
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True)
-    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0, pin_memory=True, sampler=train_sampler)
+    train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, collate_fn=PadSequence(), num_workers=0,
+                              pin_memory=True, sampler=train_sampler)
 
     epoch = 1
     mask_type = torch.float32

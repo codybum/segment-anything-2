@@ -110,8 +110,6 @@ class SAM2ImagePredictor:
         input_image = self._transforms(image)
         input_image = input_image[None, ...].to(self.device)
 
-        print('DEVICE:', self.device)
-
         assert (
             len(input_image.shape) == 4 and input_image.shape[1] == 3
         ), f"input_image must be of size 1x3xHxW, got {input_image.shape}"
