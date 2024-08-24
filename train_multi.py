@@ -79,6 +79,8 @@ def train(rank, args):
 
                     for pack in packs:
 
+                        print('pack:', type(pack), pack)
+                        exit(0)
                         # input image and gt masks
                         image = pack['image'].numpy()
                         mask = pack['mask'].numpy()
