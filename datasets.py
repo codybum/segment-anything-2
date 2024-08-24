@@ -25,7 +25,7 @@ class LabPicsV1(Dataset):
             self.data.append({"image": args.input_data_path + "Simple/Train/Image/" + name,
                          "annotation": args.input_data_path + "Simple/Train/Instance/" + name[:-4] + ".png"})
 
-        print(self.data)
+        #print(self.data)
         #{'image': '../data/LabPicsV1/Simple/Train/Image/ChemPlayer_Happy Perborate Christmas!-screenshot (1).jpg',
         # 'annotation': '../data/LabPicsV1/Simple/Train/Instance/ChemPlayer_Happy Perborate Christmas!-screenshot (1).png'}
 
@@ -64,9 +64,6 @@ class LabPicsV1(Dataset):
             points.append([[yx[1], yx[0]]])
 
         #return Img, np.array(masks), np.array(points), np.ones([len(masks), 1])
-
-        print('Img:', type(Img))
-        exit(0)
 
         return {
             'image': Img,

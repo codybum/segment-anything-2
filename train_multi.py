@@ -51,17 +51,33 @@ def train(rank, args):
     predictor = SAM2ImagePredictor(sam2_model_ddp)
 
     # Set training parameters
-
     predictor.model.module.sam_mask_decoder.train(True)  # enable training of mask decoder
     predictor.model.module.sam_prompt_encoder.train(True)  # enable training of prompt encoder
     optimizer = torch.optim.AdamW(params=predictor.model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = torch.cuda.amp.GradScaler()  # mixed precision
 
     #training data
+
+    class PadSequence:
+        def __call__(self, batch):
+            # Let's assume that each element in "batch" is a tuple (data, label).
+            # Sort the batch in the descending order
+            sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
+            # Get each sequence and pad it
+            sequences = [x[0] for x in sorted_batch]
+            sequences_padded = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True)
+            # Also need to store the length of each sequence
+            # This is later needed in order to unpad the sequences
+            lengths = torch.LongTensor([len(x) for x in sequences])
+
+            # Don't forget to grab the labels of the *sorted* batch
+            labels = torch.LongTensor(map(lambda x: x[1], sorted_batch))
+            return sequences_padded, lengths, labels
+
     labpicsv1_train_dataset = LabPicsV1(args)
     train_sampler = DistributedSampler(labpicsv1_train_dataset, rank=rank, shuffle=True, seed=args.random_state)
     train_loader = DataLoader(labpicsv1_train_dataset, batch_size=None, num_workers=0,
-                              pin_memory=True, sampler=train_sampler)
+                              pin_memory=True, sampler=train_sampler, collate_fn=PadSequence())
 
     # Training loop
     with torch.cuda.amp.autocast():  # cast to mix precision
