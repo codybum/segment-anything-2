@@ -16,6 +16,8 @@ class LabPicsV1(Dataset):
             self.data.append({"image": args.input_data_path + "Simple/Train/Image/" + name,
                          "annotation": args.input_data_path + "Simple/Train/Instance/" + name[:-4] + ".png"})
 
+        print(self.data)
+
     def __len__(self):
         return len(self.data)
 
